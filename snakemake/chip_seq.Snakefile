@@ -10,7 +10,7 @@ EXTENSION = ""
 PAIRED = False
 
 # Trimming parameters
-ADAPTERS="/nas/longleaf/apps/bbmap/37.62/bbmap/resources/adapters.fa"
+ADAPTERS = "~/proj/seq/bbmap/adapters.fa"
 
 # Mapping parameters
 BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
@@ -18,9 +18,11 @@ MULTI_FLAG = "-M 1"
 LEFT_TRIM = 0
 RIGHT_TRIM = 0
 
-# Counting parameters
-COUNT_METHOD="subread"
-GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
+# Coverage parameters
+# Length by which to extend reads (leave blank for paired end)
+EXT_LENGTH = ""
+# Name for merged bg file
+BG_NAME = "bg/merged.bg"
 
 ###############################################################################
 
@@ -36,7 +38,7 @@ if len(SAMPLES) == 0:
 
 rule all:
 	input:
-		expand("bam/{sample}.bam.bai", sample = SAMPLES)
+		BG_NAME
 
 if PAIRED:
 	rule trim:
@@ -115,3 +117,33 @@ rule index_bam:
 		"bam/{sample}.bam.bai"
 	shell:
 		"samtools index {input}"
+
+rule make_bg:
+	input:
+		bamfile = "bam/{sample}.bam",
+		bamidx = "bam/{sample}.bam.bai"
+	output:
+		"bg/{sample}.bg"
+	params:
+		ext_length = EXT_LENGTH
+	threads:
+		8
+	log:
+		"logs/{sample}_bg.log"
+	shell:
+		"module purge; "
+		"module load deeptools/2.5.4; "
+		"bamCoverage -of bedgraph -bs 200 -b {input.bamfile} -o {output} -p {threads} --normalizeTo1x 100258171 --extendReads {params.ext_length} >> {log} 2>&1"
+
+rule merge_bg:
+	input:
+		expand("bg/{sample}.bg", sample = SAMPLES)
+	output:
+		BG_NAME
+	params:
+		name = expand("{sample}", sample = SAMPLES)
+	log:
+		"logs/merge_bg.log"
+	shell:
+		"module load bedtools; "
+		"bedtools unionbedg -i {input} -header -names {params.name} > {output} 2> {log}"
